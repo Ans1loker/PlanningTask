@@ -1,18 +1,17 @@
-import React, { useState } from 'react';
+// TaskPlanner.js
+
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import {
-  Container, TextField, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  Select, MenuItem, FormControl, InputLabel, Typography, CircularProgress, Chip, Box, List, ListItem, ListItemText, IconButton
-} from '@mui/material';
-import { DragDropContext, Droppable } from 'react-beautiful-dnd';
+import { Button, Modal, Form, Spinner, ProgressBar } from 'react-bootstrap';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { CSVLink } from 'react-csv';
 import TaskList from './components/TaskList';
 import { motion } from 'framer-motion';
-import DeleteIcon from '@mui/icons-material/Delete';
 
-const TaskPlanner = ({ tasks, onTaskUpdate }) => {
+const TaskPlanner = () => {
+  const [tasks, setTasks] = useState([]);
   const [error, setError] = useState('');
   const [newTask, setNewTask] = useState({ name: '', priority: 1, status: 'Pending', tags: [], comments: [], progress: 0 });
   const [editTask, setEditTask] = useState(null);
@@ -24,6 +23,24 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
   const [tagInput, setTagInput] = useState('');
   const [commentInput, setCommentInput] = useState('');
 
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  const fetchTasks = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('http://localhost:3001/api/tasks');
+      setTasks(response.data);
+    } catch (error) {
+      setError('Error fetching tasks. Please try again later.');
+      toast.error('Error fetching tasks.');
+      console.error('Error fetching tasks:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     if (editTask) {
@@ -33,11 +50,12 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
     }
   };
 
-  const handleAddTask = async () => {
+  const handleAddTask = async (e) => {
+    e.preventDefault();
     setLoading(true);
     try {
       const response = await axios.post('http://localhost:3001/api/tasks', newTask);
-      onTaskUpdate([...tasks, response.data]);
+      setTasks([...tasks, response.data]);
       setNewTask({ name: '', priority: 1, status: 'Pending', tags: [], comments: [], progress: 0 });
       toast.success('Task added successfully!');
       setShowModal(false);
@@ -55,11 +73,12 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
     setShowModal(true);
   };
 
-  const handleUpdateTask = async () => {
+  const handleUpdateTask = async (e) => {
+    e.preventDefault();
     setLoading(true);
     try {
       const response = await axios.put(`http://localhost:3001/api/tasks/${editTask._id}`, editTask);
-      onTaskUpdate(tasks.map(task => (task._id === editTask._id ? response.data : task)));
+      setTasks(tasks.map(task => (task._id === editTask._id ? response.data : task)));
       setEditTask(null);
       toast.success('Task updated successfully!');
       setShowModal(false);
@@ -77,7 +96,7 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
     setLoading(true);
     try {
       await axios.delete(`http://localhost:3001/api/tasks/${taskId}`);
-      onTaskUpdate(tasks.filter(task => task._id !== taskId));
+      setTasks(tasks.filter(task => task._id !== taskId));
       toast.success('Task deleted successfully!');
     } catch (error) {
       setError('Error deleting task. Please try again later.');
@@ -99,7 +118,7 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
       if (a[key] > b[key]) return order === 'asc' ? 1 : -1;
       return 0;
     });
-    onTaskUpdate(sortedTasks);
+    setTasks(sortedTasks);
   };
 
   const handleFilterChange = (e) => {
@@ -115,7 +134,7 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
     const items = Array.from(tasks);
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
-    onTaskUpdate(items);
+    setTasks(items);
   };
 
   const handleFileUpload = async (e) => {
@@ -141,7 +160,7 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
 
       try {
         await axios.post('http://localhost:3001/api/tasks/import', result);
-        onTaskUpdate([...tasks, ...result]);
+        setTasks([...tasks, ...result]);
         toast.success('Tasks imported successfully!');
       } catch (error) {
         setError('Error importing tasks. Please try again later.');
@@ -156,7 +175,8 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
     setTagInput(e.target.value);
   };
 
-  const addTag = () => {
+  const addTag = (e) => {
+    e.preventDefault();
     if (editTask) {
       setEditTask({ ...editTask, tags: [...editTask.tags, tagInput] });
     } else {
@@ -169,7 +189,8 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
     setCommentInput(e.target.value);
   };
 
-  const addComment = () => {
+  const addComment = (e) => {
+    e.preventDefault();
     if (editTask) {
       setEditTask({ ...editTask, comments: [...editTask.comments, commentInput] });
     } else {
@@ -178,34 +199,42 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
     setCommentInput('');
   };
 
+  const filteredTasks = tasks.filter(task => {
+    return filter === 'All' || task.status === filter;
+  }).filter(task => {
+    return task.name.toLowerCase().includes(search.toLowerCase());
+  });
+
   return (
-    <Container>
-      <Typography variant="h4" component="h2" gutterBottom>
-        Task Planner
-      </Typography>
-      {error && <Typography color="error">{error}</Typography>}
-      <FormControl fullWidth margin="normal">
-        <InputLabel>Filter by status</InputLabel>
-        <Select value={filter} onChange={handleFilterChange}>
-          <MenuItem value="All">All</MenuItem>
-          <MenuItem value="Pending">Pending</MenuItem>
-          <MenuItem value="In Progress">In Progress</MenuItem>
-          <MenuItem value="Completed">Completed</MenuItem>
-        </Select>
-      </FormControl>
-      <TextField
-        label="Search by name"
-        variant="outlined"
-        fullWidth
-        margin="normal"
-        value={search}
-        onChange={handleSearchChange}
-        placeholder="Search tasks..."
-      />
+    <div className="container">
+      <h1 className="mt-5">SmartTask Planner</h1>
+      {error && <p className="alert alert-danger">{error}</p>}
+      <div className="form-group">
+        <label htmlFor="filter">Filter by status:</label>
+        <select id="filter" className="form-control" value={filter} onChange={handleFilterChange}>
+          <option value="All">All</option>
+          <option value="Pending">Pending</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Completed">Completed</option>
+        </select>
+      </div>
+      <div className="form-group">
+        <label htmlFor="search">Search by name:</label>
+        <input
+          id="search"
+          type="text"
+          className="form-control"
+          value={search}
+          onChange={handleSearchChange}
+          placeholder="Search tasks..."
+        />
+      </div>
       {loading && (
-        <Box display="flex" justifyContent="center" my={4}>
-          <CircularProgress />
-        </Box>
+        <div className="d-flex justify-content-center my-4">
+          <Spinner animation="border" role="status">
+            <span className="sr-only">Loading...</span>
+          </Spinner>
+        </div>
       )}
       {!loading && (
         <DragDropContext onDragEnd={onDragEnd}>
@@ -218,148 +247,119 @@ const TaskPlanner = ({ tasks, onTaskUpdate }) => {
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5 }}
               >
-                <TaskList tasks={tasks} onEdit={handleEditTask} onDelete={handleDeleteTask} onSort={handleSort} />
+                <TaskList tasks={filteredTasks} onEdit={handleEditTask} onDelete={handleDeleteTask} onSort={handleSort} />
                 {provided.placeholder}
               </motion.div>
             )}
           </Droppable>
         </DragDropContext>
       )}
-      <Box mt={4} display="flex" justifyContent="space-between">
-        <Button variant="contained" color="primary" onClick={() => setShowModal(true)}>
-          Add Task
-        </Button>
-        <CSVLink data={tasks} filename="tasks.csv" style={{ textDecoration: 'none' }}>
-          <Button variant="contained" color="secondary">
-            Export Tasks
-          </Button>
-        </CSVLink>
-        <Button variant="contained" component="label">
-          Import Tasks
-          <input type="file" accept=".csv" hidden onChange={handleFileUpload} />
-        </Button>
-      </Box>
-      <Dialog open={showModal} onClose={() => { setShowModal(false); setEditTask(null); }}>
-        <DialogTitle>{editTask ? 'Edit Task' : 'Add Task'}</DialogTitle>
-        <DialogContent>
-          <Box component="form" noValidate autoComplete="off">
-            <TextField
-              autoFocus
-              margin="dense"
-              label="Task Name"
-              type="text"
-              fullWidth
-              name="name"
-              value={editTask ? editTask.name : newTask.name}
-              onChange={handleInputChange}
-              required
-            />
-            <FormControl fullWidth margin="dense">
-              <InputLabel>Priority</InputLabel>
-              <Select
+      <Button className="mt-4" onClick={() => setShowModal(true)}>
+        Add Task
+      </Button>
+
+      <CSVLink data={tasks} filename="tasks.csv" className="btn btn-secondary mt-4">
+        Export Tasks
+      </CSVLink>
+
+      <input type="file" accept=".csv" onChange={handleFileUpload} className="mt-4" />
+
+      <Modal show={showModal} onHide={() => { setShowModal(false); setEditTask(null); }}>
+        <Modal.Header closeButton>
+          <Modal.Title>{editTask ? 'Edit Task' : 'Add Task'}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form onSubmit={editTask ? handleUpdateTask : handleAddTask}>
+            <Form.Group controlId="formTaskName">
+              <Form.Label>Task Name</Form.Label>
+              <Form.Control
+                type="text"
+                name="name"
+                value={editTask ? editTask.name : newTask.name}
+                onChange={handleInputChange}
+                placeholder="Task Name"
+                required
+              />
+            </Form.Group>
+            <Form.Group controlId="formTaskPriority" className="mt-3">
+              <Form.Label>Priority</Form.Label>
+              <Form.Control
+                type="number"
                 name="priority"
                 value={editTask ? editTask.priority : newTask.priority}
                 onChange={handleInputChange}
-              >
-                {[1, 2, 3, 4, 5].map((priority) => (
-                  <MenuItem key={priority} value={priority}>
-                    {priority}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth margin="dense">
-              <InputLabel>Status</InputLabel>
-              <Select
+                min="1"
+                placeholder="Priority"
+                required
+              />
+            </Form.Group>
+            <Form.Group controlId="formTaskStatus" className="mt-3">
+              <Form.Label>Status</Form.Label>
+              <Form.Control
+                as="select"
                 name="status"
                 value={editTask ? editTask.status : newTask.status}
                 onChange={handleInputChange}
+                required
               >
-                {['Pending', 'In Progress', 'Completed'].map((status) => (
-                  <MenuItem key={status} value={status}>
-                    {status}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth margin="dense">
-              <TextField
-                label="Progress"
+                <option value="Pending">Pending</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+              </Form.Control>
+            </Form.Group>
+            <Form.Group controlId="formTaskProgress" className="mt-3">
+              <Form.Label>Progress</Form.Label>
+              <Form.Control
                 type="number"
                 name="progress"
                 value={editTask ? editTask.progress : newTask.progress}
                 onChange={handleInputChange}
-                InputProps={{ inputProps: { min: 0, max: 100 } }}
+                min="0"
+                max="100"
+                placeholder="Progress"
+                required
               />
-            </FormControl>
-            <Box mt={2}>
-              <Typography variant="body1">Tags:</Typography>
-              <Box display="flex" flexWrap="wrap">
+              <ProgressBar now={editTask ? editTask.progress : newTask.progress} label={`${editTask ? editTask.progress : newTask.progress}%`} />
+            </Form.Group>
+            <Form.Group controlId="formTaskTags" className="mt-3">
+              <Form.Label>Tags</Form.Label>
+              <div>
                 {(editTask ? editTask.tags : newTask.tags).map((tag, index) => (
-                  <Chip key={index} label={tag} onDelete={() => {
-                    if (editTask) {
-                      setEditTask({ ...editTask, tags: editTask.tags.filter((_, i) => i !== index) });
-                    } else {
-                      setNewTask({ ...newTask, tags: newTask.tags.filter((_, i) => i !== index) });
-                    }
-                  }} style={{ margin: '2px' }} />
+                  <span key={index} className="badge bg-secondary me-2">{tag}</span>
                 ))}
-              </Box>
-              <Box display="flex" alignItems="center">
-                <TextField
-                  label="Add Tag"
-                  variant="outlined"
-                  fullWidth
-                  margin="normal"
-                  value={tagInput}
-                  onChange={handleTagInputChange}
-                />
-                <Button onClick={addTag} variant="contained" color="primary" style={{ marginLeft: '8px', marginTop: '16px', height: '56px' }}>Add</Button>
-              </Box>
-            </Box>
-            <Box mt={2}>
-              <Typography variant="body1">Comments:</Typography>
-              <List>
+              </div>
+              <Form.Control
+                type="text"
+                value={tagInput}
+                onChange={handleTagInputChange}
+                placeholder="Add a tag"
+              />
+              <Button variant="primary" onClick={addTag} className="mt-2">Add Tag</Button>
+            </Form.Group>
+            <Form.Group controlId="formTaskComments" className="mt-3">
+              <Form.Label>Comments</Form.Label>
+              <div>
                 {(editTask ? editTask.comments : newTask.comments).map((comment, index) => (
-                  <ListItem key={index}>
-                    <ListItemText primary={comment} />
-                    <IconButton edge="end" aria-label="delete" onClick={() => {
-                      if (editTask) {
-                        setEditTask({ ...editTask, comments: editTask.comments.filter((_, i) => i !== index) });
-                      } else {
-                        setNewTask({ ...newTask, comments: newTask.comments.filter((_, i) => i !== index) });
-                      }
-                    }}>
-                      <DeleteIcon />
-                    </IconButton>
-                  </ListItem>
+                  <p key={index}>{comment}</p>
                 ))}
-              </List>
-              <Box display="flex" alignItems="center">
-                <TextField
-                  label="Add Comment"
-                  variant="outlined"
-                  fullWidth
-                  margin="normal"
-                  value={commentInput}
-                  onChange={handleCommentInputChange}
-                />
-                <Button onClick={addComment} variant="contained" color="primary" style={{ marginLeft: '8px', marginTop: '16px', height: '56px' }}>Add</Button>
-              </Box>
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setShowModal(false); setEditTask(null); }} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={editTask ? handleUpdateTask : handleAddTask} color="primary">
-            {editTask ? 'Update Task' : 'Add Task'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+              </div>
+              <Form.Control
+                type="text"
+                value={commentInput}
+                onChange={handleCommentInputChange}
+                placeholder="Add a comment"
+              />
+              <Button variant="primary" onClick={addComment} className="mt-2">Add Comment</Button>
+            </Form.Group>
+            <Button variant="primary" type="submit" className="mt-3">
+              {editTask ? 'Update Task' : 'Add Task'}
+            </Button>
+          </Form>
+        </Modal.Body>
+      </Modal>
+
       <ToastContainer />
-    </Container>
+    </div>
   );
 };
 
